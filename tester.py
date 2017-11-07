@@ -15,7 +15,7 @@ grid = np.full((10, 10), 9, dtype=np.int)
 # 22 = mine
 # 99 = game over
 
-cost = np.full((8, 8), 0, dtype=np.int)
+cost = np.array(np.full((8, 8), 9, dtype=np.int))
 # 0 = 0. Not opened, not surrounded by any numbers.
 # 1 = 1 cost
 # 2 = 2 cost
@@ -38,7 +38,9 @@ f = open('model.txt', 'rb')
 s = f.read()
 classifier = pickle.loads(s)
 
-snap = cv2.imread("mines_1.png")
+snap = None
+movesCount = 0
+gameEnd = False
 
 
 def updateSnap():
@@ -51,44 +53,43 @@ def updateSnap():
 def updateGrid():
     # updates the grid matrix, a digital representation of the 8x8 minesweeper grid
 
-    global grid, queue
+    global grid, queue, gameEnd
+    queue = []
     for i in range(1, 9, 1):
         startX = 76 + ((i - 1) * 86)
         for j in range(1, 9, 1):
             startY = 366 + ((j - 1) * 86)
-            if grid[i][j] == 9:
-                part = snap[startX:startX + 86, startY:startY + 86, :]
-                prediction = classifier.predict(part.ravel())[0]
-                if prediction == '1':
-                    grid[i][j] = 1
-                    queue.append((i, j))
-                elif prediction == '2':
-                    grid[i][j] = 2
-                    queue.append((i, j))
-                elif prediction == '3':
-                    grid[i][j] = 3
-                    queue.append((i, j))
-                elif prediction == '4':
-                    grid[i][j] = 4
-                    queue.append((i, j))
-                elif prediction == 'open':
-                    grid[i][j] = 0
-                elif prediction == 'notopen':
-                    grid[i][j] = -1
-                elif prediction == 'flag':
-                    grid[i][j] = 11
-                elif prediction == 'mine':
-                    grid[i][j] = 22
-                elif prediction == 'dead':
-                    # end game
-                    grid[i][j] = 99
-                    print grid
-                    print '\n\n ----------------- GAME OVER -----------------\n\n'
-                    exit(1)
-                else:
-                    print prediction
-                cv2.imshow("window", part)
-                cv2.waitKey(1)
+            part = snap[startX:startX + 86, startY:startY + 86, :]
+            prediction = classifier.predict(part.ravel())[0]
+            if prediction == '1':
+                grid[i][j] = 1
+                queue.append((i, j))
+            elif prediction == '2':
+                grid[i][j] = 2
+                queue.append((i, j))
+            elif prediction == '3':
+                grid[i][j] = 3
+                queue.append((i, j))
+            elif prediction == '4':
+                grid[i][j] = 4
+                queue.append((i, j))
+            elif prediction == 'open':
+                grid[i][j] = 0
+            elif prediction == 'notopen':
+                grid[i][j] = -1
+            elif prediction == 'flag':
+                grid[i][j] = 11
+            elif prediction == 'mine':
+                grid[i][j] = 22
+            elif prediction == 'dead':
+                # end game
+                gameEnd = True
+                grid[i][j] = 99
+                print grid
+                print '\n\n ----------------- GAME OVER -----------------\n\n'
+                exit(1)
+            else:
+                print prediction
 
 
 def updateMidLayer():
@@ -111,7 +112,7 @@ def updateCost():
     updateMidLayer()
     for i in range(0, 8):
         for j in range(0, 8):
-            if grid[i][j] == -1:
+            if grid[i + 1][j + 1] == -1:
                 cost[i][j] = midLayer[i][j] \
                              + midLayer[i][j + 1] \
                              + midLayer[i][j + 2] \
@@ -125,7 +126,9 @@ def updateCost():
 
 
 def nextMove():
-    global queue, grid
+    global queue, grid, movesCount, cost
+    listNeighbours = []
+    moveMade = False
 
     for i, j in queue:
         notOpenCount = 0
@@ -134,6 +137,7 @@ def nextMove():
                       (i - 1, j + 1, grid[i - 1][j + 1], 0), (i, j + 1, grid[i][j + 1], 0),
                       (i + 1, j + 1, grid[i + 1][j + 1], 0), (i + 1, j, grid[i + 1][j], 0),
                       (i + 1, j - 1, grid[i + 1][j - 1], 0), (i, j - 1, grid[i][j - 1], 0)]
+        listNeighbours.append(neighbours)
 
         for k in range(0, neighbours.__len__()):
             i1, j1, val, flag = neighbours[k]
@@ -146,22 +150,43 @@ def nextMove():
         if notOpenCount + flagCount == grid[i][j]:
             for i1, j1, val, flag in neighbours:
                 if flag == 1:
-                    print "marking " + str(i1-1) + ", " + str(j1-1) + " as flag"
+                    moveMade = True
+                    movesCount += 1
+                    pg.moveTo(409 + (j1 - 1) * 86, 117 + (i1 - 1) * 86, duration=1)
+                    pg.rightClick(409 + (j1 - 1) * 86, 117 + (i1 - 1) * 86)
+                    print "marking " + str(i1) + ", " + str(j1) + " as flag"
                     grid[i1][j1] = 11
         elif flagCount == grid[i][j]:
             for i1, j1, val, flag in neighbours:
                 if flag == 1 and grid[i1][j1] == -1:
-                    print "opening " + str(i1 - 1) + ", " + str(j1 - 1)
+                    moveMade = True
+                    movesCount += 1
+                    pg.moveTo(409 + (j1 - 1) * 86, 117 + (i1 - 1) * 86, duration=1)
+                    pg.click(409 + (j1 - 1) * 86, 117 + (i1 - 1) * 86)
+                    print "opening " + str(i1) + ", " + str(j1)
+                    cv2.waitKey(500)
                     grid[i1][j1] = 9
 
+    if not moveMade:
+        a = np.min(cost)
+        print a
+        for i in range(0, 8):
+            for j in range(0, 8):
+                if cost[i][j] == a:
+                    movesCount += 1
+                    pg.moveTo(409 + (j * 86), 119 + (i * 86), duration=1)
+                    pg.click(409 + (j * 86), 119 + (i * 86))
+                    print "opening " + str(i + 1) + ", " + str(j + 1)
+                    grid[i + 1][j + 1] = 9
+                    moveMade = True
+                    return
 
-updateCost()
-print grid
-print '\n\n'
-print midLayer
-print '\n\n'
-print cost
-nextMove()
+
+while not gameEnd:
+    updateSnap()
+    updateCost()
+    nextMove()
+    pg.moveTo(350, 350, duration=1)
 
 # square is 86 x 86
 # grid is 688 x 688
