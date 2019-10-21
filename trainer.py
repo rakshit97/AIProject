@@ -19,7 +19,7 @@ classifier = svm.LinearSVC()
 classifier.fit(feature_values, feature_id)
 score = classifier.score(feature_values, feature_id)
 print score
-f = open('model.txt', 'wb')
+
 s = pickle.dumps(classifier)
-f.write(s)
-f.close()
+with open('model.txt', 'wb') as f:
+  f.write(s)
